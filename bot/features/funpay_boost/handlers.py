@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from telegram import Update
 from telegram.ext import Application, ContextTypes, CallbackQueryHandler
 from bot.core.auth import owner_only
+from telegram.error import BadRequest
 
 from .keyboards import (
     FUNPAY_MENU,
@@ -67,9 +68,12 @@ async def open_funpay_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(
-            text=text, reply_markup=funpay_menu_kb()
-        )
+        try:
+            await update.callback_query.edit_message_text(
+                text=text, reply_markup=funpay_menu_kb()
+            )
+        except BadRequest:
+            pass
     else:
         await update.message.reply_text(text=text, reply_markup=funpay_menu_kb())
 
@@ -109,23 +113,39 @@ async def on_status_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @owner_only
 async def on_set_interval_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
-    await update.callback_query.edit_message_text(
-        "فاصله بوست را انتخاب کنید:", reply_markup=funpay_interval_options_kb()
-    )
+    try:
+        await update.callback_query.edit_message_text(
+            "فاصله بوست را انتخاب کنید:", reply_markup=funpay_interval_options_kb()
+        )
+    except BadRequest:
+        pass
 
 
 @owner_only
-async def on_set_interval_value(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, hours: int
-):
+async def on_set_interval_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     chat_id = update.effective_chat.id
+    data = update.callback_query.data or ""
+    try:
+        hours = int(data.replace(FUNPAY_SET_INTERVAL_PREFIX, ""))
+    except Exception:
+        # داده نامعتبر؛ صرفاً منو را بازنشانی کن
+        try:
+            await update.callback_query.edit_message_text(
+                "فاصله بوست را انتخاب کنید:", reply_markup=funpay_interval_options_kb()
+            )
+        except BadRequest:
+            pass
+        return
     user = update_user(chat_id, {"interval_hours": hours})
     if user.get("active"):
         await _schedule_next_reminder(context, chat_id, hours)
-    await update.callback_query.edit_message_text(
-        f"فاصله روی {hours} ساعت تنظیم شد.", reply_markup=funpay_menu_kb()
-    )
+    try:
+        await update.callback_query.edit_message_text(
+            f"فاصله روی {hours} ساعت تنظیم شد.", reply_markup=funpay_menu_kb()
+        )
+    except BadRequest:
+        pass
 
 
 @owner_only
@@ -156,10 +176,6 @@ def register_funpay_handlers(app: Application):
     app.add_handler(
         CallbackQueryHandler(on_set_interval_open, pattern=f"^{FUNPAY_SET_INTERVAL_PREFIX}OPEN$")
     )
-    for h in [1, 2, 3, 4, 6]:
-        app.add_handler(
-            CallbackQueryHandler(
-                lambda u, c, hh=h: on_set_interval_value(u, c, hh),
-                pattern=f"^{FUNPAY_SET_INTERVAL_PREFIX}{h}$",
-            )
-        )
+    app.add_handler(
+        CallbackQueryHandler(on_set_interval_value, pattern=f"^{FUNPAY_SET_INTERVAL_PREFIX}\\d+$")
+    )
