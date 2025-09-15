@@ -18,10 +18,11 @@ python -m bot.app
 ## Docker
 
 ### Build & Run با Docker Compose
-1. یک فایل `.env` کنار `docker-compose.yml` بسازید و مقدار زیر را قرار دهید:
+1. یک فایل `.env` کنار `docker-compose.yml` بسازید و مقادیر زیر را قرار دهید:
 
 ```
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF
+OWNER_USER_ID=123456789
 ```
 
 2. اجرای کانتینر:

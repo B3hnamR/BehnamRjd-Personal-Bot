@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from telegram import Update
 from telegram.ext import Application, ContextTypes, CallbackQueryHandler
+from bot.core.auth import owner_only
 
 from .keyboards import (
     FUNPAY_MENU,
@@ -54,6 +55,7 @@ async def funpay_reminder_job(context: ContextTypes.DEFAULT_TYPE):
     update_user(chat_id, {"last_reminder_message_id": msg.message_id})
 
 
+@owner_only
 async def open_funpay_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = get_user(chat_id)
@@ -72,6 +74,7 @@ async def open_funpay_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text=text, reply_markup=funpay_menu_kb())
 
 
+@owner_only
 async def on_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     chat_id = update.effective_chat.id
@@ -84,6 +87,7 @@ async def on_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@owner_only
 async def on_stop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     chat_id = update.effective_chat.id
@@ -96,11 +100,13 @@ async def on_stop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@owner_only
 async def on_status_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await open_funpay_menu(update, context)
 
 
+@owner_only
 async def on_set_interval_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await update.callback_query.edit_message_text(
@@ -108,6 +114,7 @@ async def on_set_interval_open(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
+@owner_only
 async def on_set_interval_value(
     update: Update, context: ContextTypes.DEFAULT_TYPE, hours: int
 ):
@@ -121,6 +128,7 @@ async def on_set_interval_value(
     )
 
 
+@owner_only
 async def on_boost_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer("ثبت شد. تایمر از حالا ریست می‌شود.")
     chat_id = update.effective_chat.id

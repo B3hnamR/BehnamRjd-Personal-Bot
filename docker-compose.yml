@@ -6,6 +6,7 @@ services:
     container_name: personal-telegram-bot
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OWNER_USER_ID=${OWNER_USER_ID}
       - TZ=Asia/Tehran
     volumes:
       - ./data:/app/data
