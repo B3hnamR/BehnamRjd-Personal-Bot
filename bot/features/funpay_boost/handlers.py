@@ -96,10 +96,13 @@ async def on_start_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now_iso = datetime.now(timezone.utc).isoformat()
     user = update_user(chat_id, {"active": True, "last_boost_at": now_iso})
     await _schedule_next_reminder(context, chat_id, user["interval_hours"])
-    await update.callback_query.edit_message_text(
-        f"یادآور فعال شد. اولین یادآور پس از {user['interval_hours']} ساعت ارسال می‌شود.",
-        reply_markup=funpay_menu_kb(),
-    )
+    try:
+        await update.callback_query.edit_message_text(
+            f"یادآور فعال شد. اولین یادآور پس از {user['interval_hours']} ساعت ارسال می‌شود.",
+            reply_markup=funpay_menu_kb(),
+        )
+    except BadRequest:
+        pass
 
 
 @owner_only
@@ -110,9 +113,12 @@ async def on_stop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if job:
         job.schedule_removal()
     update_user(chat_id, {"active": False})
-    await update.callback_query.edit_message_text(
-        "یادآور غیرفعال شد.", reply_markup=funpay_menu_kb()
-    )
+    try:
+        await update.callback_query.edit_message_text(
+            "یادآور غیرفعال شد.", reply_markup=funpay_menu_kb()
+        )
+    except BadRequest:
+        pass
 
 
 @owner_only
