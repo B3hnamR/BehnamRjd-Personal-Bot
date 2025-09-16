@@ -4,6 +4,7 @@ from typing import Optional, Union
 from zoneinfo import ZoneInfo
 from persiantools.jdatetime import JalaliDateTime
 from persiantools import digits
+import logging
 
 TEHRAN_TZ = ZoneInfo("Asia/Tehran")
 
@@ -23,12 +24,15 @@ def to_shamsi_text(iso_str: Optional[str]) -> str:
     if not iso_str:
         return "—"
     try:
-        dt_utc = datetime.fromisoformat(iso_str)
+        iso_norm = iso_str.replace("Z", "+00:00") if iso_str.endswith("Z") else iso_str
+        dt_utc = datetime.fromisoformat(iso_norm)
         if dt_utc.tzinfo is None:
             dt_utc = dt_utc.replace(tzinfo=timezone.utc)
         dt_local = dt_utc.astimezone(TEHRAN_TZ)
         dt_local_naive = dt_local.replace(tzinfo=None)
-        jdt = JalaliDateTime.fromgregorian(datetime=dt_local_naive)
+        # استفاده از API سازگار persiantools 5.x
+        jdt = JalaliDateTime.to_jalali(dt_local_naive)
         return digits.en_to_fa(jdt.strftime("%Y/%m/%d %H:%M"))
     except Exception:
+        logging.warning("to_shamsi_text failed for value=%s", iso_str, exc_info=True)
         return iso_str
