@@ -4,6 +4,7 @@ from telegram import Update, ForceReply, ReplyKeyboardRemove
 from telegram.ext import Application, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 from bot.core.auth import owner_only
 from telegram.error import BadRequest
+from bot.core.timefmt import to_shamsi_text
 
 from .keyboards import (
     FUNPAY_MENU,
@@ -67,12 +68,14 @@ async def funpay_reminder_job(context: ContextTypes.DEFAULT_TYPE):
 async def open_funpay_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = get_user(chat_id)
+    last_boost = to_shamsi_text(user.get('last_boost_at'))
+    next_override = to_shamsi_text(user.get('next_override_at'))
     text = (
         "FunPay Boost Reminder\n"
         f"- وضعیت: {'فعال' if user.get('active') else 'غیرفعال'}\n"
         f"- فاصله: {user.get('interval_hours', 4)} ساعت\n"
-        f"- آخرین بوست: {user.get('last_boost_at') or 'نامشخص'}\n"
-        f"- یادآور بعدی (override): {user.get('next_override_at') or '—'}"
+        f"- آخرین بوست: {last_boost}\n"
+        f"- یادآور بعدی (override): {next_override}"
     )
     if update.callback_query:
         await update.callback_query.answer()
