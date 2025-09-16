@@ -20,3 +20,6 @@ try:
     OWNER_USER_ID = int(OWNER_USER_ID_STR)
 except ValueError:
     raise RuntimeError("OWNER_USER_ID باید یک عدد صحیح باشد.")
+
+# شناسه شریک (GUID) برای API Plati/Digiseller (اختیاری؛ در صورت نبود، از HTML fallback استفاده می‌شود)
+GUID_AGENT = os.getenv("GUID_AGENT")

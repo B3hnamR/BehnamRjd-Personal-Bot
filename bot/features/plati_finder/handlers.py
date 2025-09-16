@@ -4,7 +4,9 @@ from bot.core.auth import owner_only
 from .keyboards import PLATI_MENU, PLATI_START, PLATI_BACK, plati_menu_kb
 import httpx
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, parse_qs
+from bot.config import GUID_AGENT
+import xml.etree.ElementTree as ET
 
 
 PLATI_MAIN_BUTTON = "Plati Product Finder"
@@ -39,7 +41,7 @@ async def on_plati_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.message.reply_text(ASK_URL, reply_markup=ForceReply(selective=True))
 
 
-async def _fetch_all_items(session: httpx.AsyncClient, start_url: str) -> list[tuple[str, str]]:
+async def _fetch_all_items_html(session: httpx.AsyncClient, start_url: str) -> list[tuple[str, str]]:
     """
     تلاش ساده: صفحات plati دارای بارگذاری lazy هستند؛ HTML اولیه ممکن است لیست را کامل ندهد.
     رویکرد: صفحه را واکشی می‌کنیم و لینک‌های آیتم‌ها را از بلوک‌های پیشنهاد/لیست استخراج می‌کنیم.
@@ -67,6 +69,97 @@ async def _fetch_all_items(session: httpx.AsyncClient, start_url: str) -> list[t
         seen.add(u)
         uniq.append((t, u))
     return uniq
+
+
+def _parse_section_and_order(cat_url: str) -> tuple[int | None, str | None]:
+    try:
+        u = urlparse(cat_url)
+        parts = [p for p in u.path.split('/') if p]
+        section_id = None
+        for p in parts:
+            if p.isdigit():
+                section_id = int(p)
+        qs = parse_qs(u.query)
+        sort = qs.get('sort', [None])[0]
+        order = None
+        if sort == 'price_asc':
+            order = 'priceDESC'  # ascending
+        elif sort == 'price_desc':
+            order = 'price'      # descending
+        return section_id, order
+    except Exception:
+        return None, None
+
+
+async def _fetch_all_items_api(session: httpx.AsyncClient, cat_url: str) -> list[tuple[str, str]]:
+    if not GUID_AGENT:
+        return []
+    section_id, order = _parse_section_and_order(cat_url)
+    if not section_id:
+        return []
+    items: list[tuple[str, str]] = []
+    page = 1
+    rows = 500
+    while True:
+        root = ET.Element('digiseller.request')
+        ET.SubElement(root, 'guid_agent').text = GUID_AGENT
+        ET.SubElement(root, 'id_section').text = str(section_id)
+        ET.SubElement(root, 'lang').text = 'en-US'
+        ET.SubElement(root, 'encoding').text = 'utf-8'
+        ET.SubElement(root, 'page').text = str(page)
+        ET.SubElement(root, 'rows').text = str(rows)
+        ET.SubElement(root, 'currency').text = 'USD'
+        if order:
+            ET.SubElement(root, 'order').text = order
+        data = ET.tostring(root, encoding='utf-8')
+        resp = await session.post('https://plati.io/xml/goods.asp', content=data, headers={'Content-Type': 'application/xml'})
+        resp.raise_for_status()
+        tree = ET.fromstring(resp.content)
+        retval = tree.findtext('retval') or '0'
+        if retval != '0':
+            break
+        rows_node = tree.find('rows')
+        if rows_node is None:
+            break
+        for row in rows_node.findall('row'):
+            pid = row.findtext('id_goods')
+            name = (row.findtext('name_goods') or '').strip()
+            if not pid or not name:
+                continue
+            items.append((name, pid))
+        total_pages_text = tree.findtext('pages')
+        try:
+            total_pages = int(total_pages_text) if total_pages_text else page
+        except Exception:
+            total_pages = page
+        if page >= total_pages:
+            break
+        page += 1
+    results: list[tuple[str, str]] = []
+    for name, pid in items:
+        try:
+            p = await session.get(f'https://api.digiseller.com/api/products/{pid}/data?format=json')
+            p.raise_for_status()
+            j = p.json()
+            url = None
+            if isinstance(j, dict):
+                if 'product' in j and isinstance(j['product'], dict):
+                    url = j['product'].get('url')
+                elif 'content' in j and isinstance(j['content'], dict):
+                    url = j['content'].get('url')
+            if not url:
+                url = f'https://plati.io/itm/{pid}'
+            results.append((name, url))
+        except Exception:
+            results.append((name, f'https://plati.io/itm/{pid}'))
+    return results
+
+
+async def _fetch_all_items(session: httpx.AsyncClient, start_url: str) -> list[tuple[str, str]]:
+    api_items = await _fetch_all_items_api(session, start_url)
+    if api_items:
+        return api_items
+    return await _fetch_all_items_html(session, start_url)
 
 
 @owner_only

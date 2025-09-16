@@ -5,6 +5,7 @@ services:
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - OWNER_USER_ID=${OWNER_USER_ID}
+      - GUID_AGENT=${GUID_AGENT}
       - TZ=Asia/Tehran
     volumes:
       - ./data:/app/data
