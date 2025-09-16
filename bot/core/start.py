@@ -3,11 +3,12 @@ from telegram.ext import ContextTypes
 from bot.core.auth import owner_only
 
 MAIN_MENU_BUTTON = "FunPay Boost Reminder"
+PLATI_BUTTON = "Plati Product Finder"
 
 
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
-        [[KeyboardButton(MAIN_MENU_BUTTON)]],
+        [[KeyboardButton(MAIN_MENU_BUTTON)], [KeyboardButton(PLATI_BUTTON)]],
         resize_keyboard=True,
     )
 
