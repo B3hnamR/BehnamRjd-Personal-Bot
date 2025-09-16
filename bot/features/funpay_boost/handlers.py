@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
-from telegram import Update
-from telegram.ext import Application, ContextTypes, CallbackQueryHandler
+from zoneinfo import ZoneInfo
+from telegram import Update, ForceReply, ReplyKeyboardRemove
+from telegram.ext import Application, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 from bot.core.auth import owner_only
 from telegram.error import BadRequest
 
@@ -11,11 +12,15 @@ from .keyboards import (
     FUNPAY_STATUS,
     FUNPAY_SET_INTERVAL_PREFIX,
     FUNPAY_BOOST_DONE,
+    FUNPAY_SET_NEXT_OPEN,
+    FUNPAY_SET_NEXT_PRESET_PREFIX,
+    FUNPAY_SET_NEXT_BY_TIME,
     funpay_menu_kb,
     funpay_interval_options_kb,
     reminder_kb,
+    funpay_set_next_menu_kb,
 )
-from .storage import get_user, update_user
+from .storage import get_user, update_user, set_next_override_at
 
 JOB_NAME_FMT = "funpay_boost_{chat_id}"
 
@@ -54,6 +59,8 @@ async def funpay_reminder_job(context: ContextTypes.DEFAULT_TYPE):
         chat_id=chat_id, text=text, reply_markup=reminder_kb()
     )
     update_user(chat_id, {"last_reminder_message_id": msg.message_id})
+    # پاک‌سازی override برای چرخه بعدی
+    set_next_override_at(chat_id, None)
 
 
 @owner_only
@@ -64,7 +71,8 @@ async def open_funpay_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "FunPay Boost Reminder\n"
         f"- وضعیت: {'فعال' if user.get('active') else 'غیرفعال'}\n"
         f"- فاصله: {user.get('interval_hours', 4)} ساعت\n"
-        f"- آخرین بوست: {user.get('last_boost_at') or 'نامشخص'}"
+        f"- آخرین بوست: {user.get('last_boost_at') or 'نامشخص'}\n"
+        f"- یادآور بعدی (override): {user.get('next_override_at') or '—'}"
     )
     if update.callback_query:
         await update.callback_query.answer()
@@ -108,6 +116,85 @@ async def on_stop_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_status_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
     await open_funpay_menu(update, context)
+
+
+@owner_only
+async def on_set_next_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    try:
+        await update.callback_query.edit_message_text(
+            "تنظیم یادآور بعدی:", reply_markup=funpay_set_next_menu_kb()
+        )
+    except BadRequest:
+        pass
+
+
+@owner_only
+async def on_set_next_preset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    chat_id = update.effective_chat.id
+    data = update.callback_query.data or ""
+    minutes = int(data.replace(FUNPAY_SET_NEXT_PRESET_PREFIX, ""))
+    job = _find_job(context, chat_id)
+    if job:
+        job.schedule_removal()
+    when = timedelta(minutes=minutes)
+    context.job_queue.run_once(
+        funpay_reminder_job, when=when, chat_id=chat_id, name=_job_name(chat_id)
+    )
+    iso = (datetime.now(timezone.utc) + when).isoformat()
+    set_next_override_at(chat_id, iso)
+    try:
+        await update.callback_query.edit_message_text(
+            f"یادآور بعدی روی {minutes} دقیقه دیگر تنظیم شد.", reply_markup=funpay_menu_kb()
+        )
+    except BadRequest:
+        pass
+
+
+@owner_only
+async def on_set_next_by_time_open(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    context.user_data["awaiting_next_time"] = True
+    await update.callback_query.message.reply_text(
+        "لطفاً زمان را به صورت HH:MM (مثلاً 23:15) ارسال کنید:",
+        reply_markup=ForceReply(selective=True),
+    )
+
+
+@owner_only
+async def on_receive_next_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("awaiting_next_time"):
+        return
+    context.user_data["awaiting_next_time"] = False
+    chat_id = update.effective_chat.id
+    text = (update.message.text or "").strip()
+    try:
+        hh, mm = text.split(":")
+        hh = int(hh)
+        mm = int(mm)
+        tz = ZoneInfo("Asia/Tehran")
+        now_local = datetime.now(tz)
+        target_local = now_local.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if target_local <= now_local:
+            target_local = target_local + timedelta(days=1)
+        target_utc = target_local.astimezone(timezone.utc)
+        job = _find_job(context, chat_id)
+        if job:
+            job.schedule_removal()
+        delay = target_utc - datetime.now(timezone.utc)
+        context.job_queue.run_once(
+            funpay_reminder_job, when=delay, chat_id=chat_id, name=_job_name(chat_id)
+        )
+        set_next_override_at(chat_id, target_utc.isoformat())
+        await update.message.reply_text(
+            "یادآور بعدی بر اساس زمان داده‌شده تنظیم شد.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+    except Exception:
+        await update.message.reply_text(
+            "قالب نامعتبر. لطفاً به صورت HH:MM مثل 23:15 ارسال کنید."
+        )
 
 
 @owner_only
@@ -179,3 +266,12 @@ def register_funpay_handlers(app: Application):
     app.add_handler(
         CallbackQueryHandler(on_set_interval_value, pattern=f"^{FUNPAY_SET_INTERVAL_PREFIX}\\d+$")
     )
+    app.add_handler(CallbackQueryHandler(on_set_next_open, pattern=f"^{FUNPAY_SET_NEXT_OPEN}$"))
+    app.add_handler(
+        CallbackQueryHandler(on_set_next_preset, pattern=f"^{FUNPAY_SET_NEXT_PRESET_PREFIX}\\d+$")
+    )
+    app.add_handler(
+        CallbackQueryHandler(on_set_next_by_time_open, pattern=f"^{FUNPAY_SET_NEXT_BY_TIME}$")
+    )
+    from bot.config import OWNER_USER_ID
+    app.add_handler(MessageHandler(filters.User(OWNER_USER_ID) & filters.TEXT, on_receive_next_time))
