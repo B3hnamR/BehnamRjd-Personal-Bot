@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 from persiantools.jdatetime import JalaliDateTime
+from persiantools import digits
 
 TEHRAN_TZ = ZoneInfo("Asia/Tehran")
 
@@ -20,6 +21,6 @@ def to_shamsi_text(iso_str: Optional[str]) -> str:
             dt_utc = dt_utc.replace(tzinfo=timezone.utc)
         dt_local = dt_utc.astimezone(TEHRAN_TZ)
         jdt = JalaliDateTime.fromgregorian(datetime=dt_local)
-        return jdt.strftime("%Y/%m/%d %H:%M")
+        return digits.en_to_fa(jdt.strftime("%Y/%m/%d %H:%M"))
     except Exception:
         return iso_str
