@@ -14,7 +14,17 @@ ASK_QUERY = "عبارت جستجو در عنوان محصول را ارسال ک
 
 
 @owner_only
+async def on_plati_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.callback_query.answer()
+    # بازگشت به منوی اصلی با ارسال پیام جدید
+    from bot.core.start import get_main_keyboard
+    await update.callback_query.edit_message_text("بازگشت.")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="منوی اصلی", reply_markup=get_main_keyboard()) 
+
+
+@owner_only
 async def open_plati_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["plati_state"] = None
     if update.callback_query:
         await update.callback_query.answer()
         await update.callback_query.edit_message_text("Plati Product Finder", reply_markup=plati_menu_kb())
@@ -106,5 +116,7 @@ async def on_receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def register_plati_handlers(app: Application):
     app.add_handler(CallbackQueryHandler(open_plati_menu, pattern=f"^{PLATI_MENU}$"))
     app.add_handler(CallbackQueryHandler(on_plati_start, pattern=f"^{PLATI_START}$"))
-    app.add_handler(MessageHandler(filters.TEXT & filters.REPLY, on_receive_url))
-    app.add_handler(MessageHandler(filters.TEXT & filters.REPLY, on_receive_query))
+    app.add_handler(CallbackQueryHandler(on_plati_back, pattern=f"^{PLATI_BACK}$"))
+    # دریافت URL و عبارت بدون وابستگی به Reply، با اتکا به state
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_receive_url))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_receive_query))
