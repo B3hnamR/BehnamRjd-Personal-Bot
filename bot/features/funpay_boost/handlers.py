@@ -4,7 +4,7 @@ from telegram import Update, ForceReply, ReplyKeyboardRemove
 from telegram.ext import Application, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 from bot.core.auth import owner_only
 from telegram.error import BadRequest
-from bot.core.timefmt import to_shamsi_text
+from bot.core.timefmt import to_shamsi_text, to_fa_digits
 
 from .keyboards import (
     FUNPAY_MENU,
@@ -73,7 +73,7 @@ async def open_funpay_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "FunPay Boost Reminder\n"
         f"- وضعیت: {'فعال' if user.get('active') else 'غیرفعال'}\n"
-        f"- فاصله: {user.get('interval_hours', 4)} ساعت\n"
+        f"- فاصله: {to_fa_digits(user.get('interval_hours', 4))} ساعت\n"
         f"- آخرین بوست: {last_boost}\n"
         f"- یادآور بعدی (override): {next_override}"
     )
